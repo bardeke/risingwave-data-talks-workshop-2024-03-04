@@ -92,6 +92,43 @@ Options:
 3. 10
 4. 1
 
+SQL
+
+CREATE MATERIALIZED VIEW taxi_zone_trip_durations AS
+SELECT
+    tp.pulocationid AS pickup_zone_id,
+    tzp.Zone AS pickup_zone_name,
+    tp.dolocationid AS dropoff_zone_id,
+    tzd.Zone AS dropoff_zone_name,
+    AVG(EXTRACT(EPOCH FROM (tp.tpep_dropoff_datetime - tp.tpep_pickup_datetime)) / 60) AS avg_trip_time_minutes,
+    MIN(EXTRACT(EPOCH FROM (tp.tpep_dropoff_datetime - tp.tpep_pickup_datetime)) / 60) AS min_trip_time_minutes,
+    MAX(EXTRACT(EPOCH FROM (tp.tpep_dropoff_datetime - tp.tpep_pickup_datetime)) / 60) AS max_trip_time_minutes,
+    COUNT(*) AS trip_count
+FROM
+    trip_data tp
+JOIN
+    taxi_zone tzp ON tp.pulocationid = tzp.location_id
+JOIN
+    taxi_zone tzd ON tp.dolocationid = tzd.location_id
+GROUP BY
+    tp.pulocationid, tzp.Zone, tp.dolocationid, tzd.Zone;
+---
+
+SELECT
+    pickup_zone_name,
+    dropoff_zone_name,
+    avg_trip_time_minutes,
+    min_trip_time_minutes,
+    max_trip_time_minutes,
+    trip_count
+FROM
+    taxi_zone_trip_durations
+ORDER BY
+    avg_trip_time_minutes DESC
+LIMIT 1;
+
+
+
 ## Question 3
 
 From the latest pickup time to 17 hours before, what are the top 3 busiest zones in terms of number of pickups?
@@ -103,8 +140,38 @@ to create a filter condition based on the latest pickup time.
 
 NOTE: For this question `17 hours` was picked to ensure we have enough data to work with.
 
+
+
+
 Options:
 1. Clinton East, Upper East Side North, Penn Station
 2. LaGuardia Airport, Lincoln Square East, JFK Airport
 3. Midtown Center, Upper East Side South, Upper East Side North
 4. LaGuardia Airport, Midtown Center, Upper East Side North
+
+SQL
+
+WITH LatestPickupTime AS (
+    SELECT MAX(tpep_pickup_datetime) AS max_pickup_time
+    FROM trip_data
+),
+Timeframe AS (
+    SELECT
+        max_pickup_time - INTERVAL '17 hours' AS start_time,
+        max_pickup_time AS end_time
+    FROM LatestPickupTime
+),
+BusiestZones AS (
+    SELECT
+        tp.pulocationid,
+        tz.Zone,
+        COUNT(*) AS num_pickups
+    FROM
+        trip_data tp
+    JOIN Timeframe tf ON tp.tpep_pickup_datetime BETWEEN tf.start_time AND tf.end_time
+    JOIN taxi_zone tz ON tp.pulocationid = tz.location_id
+    GROUP BY tp.pulocationid, tz.Zone
+    ORDER BY num_pickups DESC
+    LIMIT 3
+)
+SELECT * FROM BusiestZones;
